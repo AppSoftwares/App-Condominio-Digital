@@ -1,0 +1,317 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// UBICACIÓN JERÁRQUICA
+// ============================================================
+
+model Urbanizacion {
+  id      Int      @id @default(autoincrement())
+  nombre  String   @unique
+  etapas  Etapa[]
+}
+
+model Etapa {
+  id             Int          @id @default(autoincrement())
+  numero         Int
+  urbanizacionId Int
+  urbanizacion   Urbanizacion @relation(fields: [urbanizacionId], references: [id])
+  conjuntos      Conjunto[]
+
+  @@unique([urbanizacionId, numero])
+}
+
+model Conjunto {
+  id      Int     @id @default(autoincrement())
+  nombre  String
+  etapaId Int
+  etapa   Etapa   @relation(fields: [etapaId], references: [id])
+  casas   Casa[]
+
+  @@unique([etapaId, nombre])
+}
+
+model Casa {
+  id         Int       @id @default(autoincrement())
+  numero     String
+  conjuntoId Int
+  conjunto   Conjunto  @relation(fields: [conjuntoId], references: [id])
+  usuarios   Usuario[]
+  cuotas     Cuota[]
+  votos      Voto[]
+
+  @@unique([conjuntoId, numero])
+}
+
+// ============================================================
+// USUARIOS Y ROLES
+// ============================================================
+
+enum Rol {
+  ADMINISTRADOR
+  CONTADOR
+  PROPIETARIO
+  COPROPIETARIO
+}
+
+enum EstadoUsuario {
+  ACTIVO
+  INACTIVO  // mudanza o pérdida de teléfono
+  PENDIENTE // esperando aprobación del admin
+}
+
+model Usuario {
+  id              Int           @id @default(autoincrement())
+  nombre          String
+  apellido        String
+  email           String        @unique
+  telefono        String?
+  passwordHash    String
+  rol             Rol           @default(PROPIETARIO)
+  estado          EstadoUsuario @default(PENDIENTE)
+  fcmToken        String?       // Firebase push token
+  casaId          Int?
+  casa            Casa?         @relation(fields: [casaId], references: [id])
+  refreshTokens   RefreshToken[]
+  pagos           Pago[]
+  mensajes        Mensaje[]
+  reservas        Reserva[]
+  creadoEn        DateTime      @default(now())
+  actualizadoEn   DateTime      @updatedAt
+
+  @@index([email])
+  @@index([casaId])
+}
+
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique
+  usuarioId  Int
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  creadoEn   DateTime @default(now())
+
+  @@index([token])
+}
+
+// ============================================================
+// CUOTAS Y COBRANZA
+// ============================================================
+
+enum EstadoCuota {
+  PENDIENTE
+  PAGADA
+  MOROSA
+  EN_CONVENIO
+}
+
+model Cuota {
+  id          Int         @id @default(autoincrement())
+  casaId      Int
+  casa        Casa        @relation(fields: [casaId], references: [id])
+  mes         Int         // 1-12
+  anio        Int
+  monto       Decimal     @db.Decimal(10, 2)
+  estado      EstadoCuota @default(PENDIENTE)
+  pago        Pago?
+  creadoEn    DateTime    @default(now())
+
+  @@unique([casaId, mes, anio])
+  @@index([estado])
+}
+
+enum EstadoPago {
+  PENDIENTE_VALIDACION
+  APROBADO
+  RECHAZADO
+}
+
+model Pago {
+  id              Int        @id @default(autoincrement())
+  cuotaId         Int        @unique
+  cuota           Cuota      @relation(fields: [cuotaId], references: [id])
+  usuarioId       Int
+  usuario         Usuario    @relation(fields: [usuarioId], references: [id])
+  monto           Decimal    @db.Decimal(10, 2)
+  comprobanteUrl  String     // URL en S3/Supabase
+  estado          EstadoPago @default(PENDIENTE_VALIDACION)
+  notas           String?
+  fechaPago       DateTime
+  validadoEn      DateTime?
+  creadoEn        DateTime   @default(now())
+
+  @@index([estado])
+}
+
+// ============================================================
+// FINANZAS — GASTOS E INGRESOS
+// ============================================================
+
+enum CategoriaGasto {
+  VIGILANTES
+  JARDINEROS
+  MACRO_CONDOMINIO
+  BOLSAS_BASURA
+  IMPUESTOS
+  CAMIONES_AGUA
+  ALUMBRADO
+  OTROS
+}
+
+model Gasto {
+  id          Int            @id @default(autoincrement())
+  descripcion String
+  categoria   CategoriaGasto
+  monto       Decimal        @db.Decimal(10, 2)
+  fecha       DateTime
+  comprobanteUrl String?
+  creadoEn    DateTime       @default(now())
+}
+
+model FondoReserva {
+  id          Int      @id @default(autoincrement())
+  saldo       Decimal  @db.Decimal(10, 2)
+  actualizadoEn DateTime @updatedAt
+}
+
+// ============================================================
+// NÓMINA / EMPLEADOS
+// ============================================================
+
+model Empleado {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  apellido  String
+  cargo     String
+  salario   Decimal   @db.Decimal(10, 2)
+  activo    Boolean   @default(true)
+  recibos   Recibo[]
+}
+
+model Recibo {
+  id          Int      @id @default(autoincrement())
+  empleadoId  Int
+  empleado    Empleado @relation(fields: [empleadoId], references: [id])
+  mes         Int
+  anio        Int
+  monto       Decimal  @db.Decimal(10, 2)
+  pdfUrl      String?
+  generadoEn  DateTime @default(now())
+
+  @@unique([empleadoId, mes, anio])
+}
+
+// ============================================================
+// RESERVAS DE ÁREAS COMUNES
+// ============================================================
+
+enum AreaComun {
+  BOHIO
+  PISCINA
+  SALON
+  CANCHA
+}
+
+enum EstadoReserva {
+  CONFIRMADA
+  CANCELADA
+  PENDIENTE
+}
+
+model Reserva {
+  id          Int           @id @default(autoincrement())
+  area        AreaComun
+  usuarioId   Int
+  usuario     Usuario       @relation(fields: [usuarioId], references: [id])
+  fechaInicio DateTime
+  fechaFin    DateTime
+  descripcion String?
+  estado      EstadoReserva @default(PENDIENTE)
+  creadoEn    DateTime      @default(now())
+
+  @@index([area, fechaInicio])
+}
+
+// ============================================================
+// CHAT / MENSAJERÍA
+// ============================================================
+
+model Canal {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @unique
+  mensajes  Mensaje[]
+}
+
+model Mensaje {
+  id         Int      @id @default(autoincrement())
+  canalId    Int
+  canal      Canal    @relation(fields: [canalId], references: [id])
+  usuarioId  Int
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+  contenido  String
+  creadoEn   DateTime @default(now())
+
+  @@index([canalId, creadoEn])
+}
+
+// ============================================================
+// ASAMBLEAS Y VOTACIONES
+// ============================================================
+
+enum EstadoAsamblea {
+  PROGRAMADA
+  EN_CURSO
+  FINALIZADA
+  CANCELADA
+}
+
+model Asamblea {
+  id           Int            @id @default(autoincrement())
+  titulo       String
+  descripcion  String
+  fechaInicio  DateTime
+  fechaFin     DateTime
+  estado       EstadoAsamblea @default(PROGRAMADA)
+  votaciones   Votacion[]
+  creadoEn     DateTime       @default(now())
+}
+
+model Votacion {
+  id          Int       @id @default(autoincrement())
+  asambleaId  Int
+  asamblea    Asamblea  @relation(fields: [asambleaId], references: [id])
+  pregunta    String
+  opciones    OpcionVoto[]
+  votos       Voto[]
+  activa      Boolean   @default(true)
+  creadoEn    DateTime  @default(now())
+}
+
+model OpcionVoto {
+  id         Int      @id @default(autoincrement())
+  votacionId Int
+  votacion   Votacion @relation(fields: [votacionId], references: [id])
+  texto      String
+  votos      Voto[]
+}
+
+model Voto {
+  id          Int        @id @default(autoincrement())
+  votacionId  Int
+  votacion    Votacion   @relation(fields: [votacionId], references: [id])
+  casaId      Int        // 1 casa = 1 voto
+  casa        Casa       @relation(fields: [casaId], references: [id])
+  opcionId    Int
+  opcion      OpcionVoto @relation(fields: [opcionId], references: [id])
+  creadoEn    DateTime   @default(now())
+
+  @@unique([votacionId, casaId]) // garantiza 1 casa = 1 voto
+}

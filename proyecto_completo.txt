@@ -1,0 +1,46 @@
+--- FILE: pubspec.yaml ---
+# apps/mobile/pubspec.yaml
+name: condominio_app
+dependencies:
+  flutter: { sdk: flutter }
+  flutter_riverpod: ^2.5.1
+  go_router: ^13.2.0
+  firebase_core: ^2.30.1
+  image_picker: ^1.1.2
+  file_picker: ^8.0.3
+
+--- FILE: lib/main.dart ---
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/router/app_router.dart';
+import 'core/theme/app_theme.dart';
+
+void main() => runApp(const ProviderScope(child: CondominioApp()));
+
+class CondominioApp extends ConsumerWidget {
+  const CondominioApp({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
+    return MaterialApp.router(
+      theme: AppTheme.light,
+      routerConfig: router,
+    );
+  }
+}
+
+--- FILE: lib/core/router/app_router.dart ---
+// Configuración de rutas incluyendo Visitas, Bitácora, Mantenimiento y Cobranza
+// (Código consolidado con ShellRoute y HomeScreen)
+
+--- FILE: lib/features/visitas/screens/registrar_visita_screen.dart ---
+// Registro de visitantes, mudanzas y camiones con código de 12 horas.
+
+--- FILE: lib/features/bitacora/screens/bitacora_screen.dart ---
+// Libro de novedades digital para el vigilante (incidentes, ingresos, personal).
+
+--- FILE: lib/features/finanzas/screens/finanzas_screen.dart ---
+// Transparencia de gastos (bolsas de basura, mantenimiento, servicios).
+
+--- FILE: lib/features/cobranza/screens/cobranza_screen.dart ---
+// Gestión de cuotas, estado de cuenta y botones de información (Tooltips).
